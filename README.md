@@ -14,6 +14,7 @@ Usage: strings macho_file [-u/--unicode-only] [-a/--ascii-only] [-q/--quiet] [-i
 - [ ] DEX support
 - [ ] .tar viewer
 - [ ] .zip/.apk/.ipa viewer
+- [ ] Remove dependencies
 
 ### Dependencies
 * radare2
