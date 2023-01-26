@@ -2,7 +2,7 @@
 Best strings command line utility
 
 ```
-Usage: strings macho_file [-u/--unicode] [-a/--ascii] [-q/--quiet]
+Usage: strings macho_file [-u/--unicode-only] [-a/--ascii-only] [-q/--quiet]
 ```
 
 **Example output**
