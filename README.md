@@ -10,10 +10,10 @@ Usage: strings macho_file [-u/--unicode-only] [-a/--ascii-only] [-q/--quiet] [-i
 - [x] IDA Pro-like output
 - [x] imhex compatible output
 - [x] Mach-O support
-- [] ELF support
-- [] DEX support
-- [] .tar viewer
-- [] .zip/.apk/.ipa viewer
+- [ ] ELF support
+- [ ] DEX support
+- [ ] .tar viewer
+- [ ] .zip/.apk/.ipa viewer
 
 ### Dependencies
 * radare2
