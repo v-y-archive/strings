@@ -1,0 +1,95 @@
+#!/usr/bin/env python3
+
+# Find all strings in binary,
+# supports UTF-8, UTF-16LE
+#
+# Dependencies: rabin2 (radare2),
+# objdump (binutils)
+#####################
+
+import subprocess
+import re
+import os, sys
+import contextlib
+import argparse
+from operator import itemgetter
+
+parser = argparse.ArgumentParser()
+parser.add_argument("file")
+parser.add_argument("-u", "--unicode-only", action="store_true")
+parser.add_argument("-a", "--ascii-only", action="store_true")
+parser.add_argument("-q", "--quiet", action="store_true")
+try:
+    with open(os.devnull, "w") as devnull:
+        with contextlib.redirect_stderr(devnull):
+            file, unicode_only, ascii_only, quiet = itemgetter(
+                "file", "unicode_only", "ascii_only", "quiet")(
+                    parser.parse_known_args()[0].__dict__)
+            if unicode_only and ascii_only:
+                exit()
+except SystemExit:
+    exit(f"Usage: {sys.argv[0]} macho_file [-u/--unicode-only] [-a/--ascii-only] [-q/--quiet]")
+
+file_type = subprocess.check_output(
+    [f"file {file}"],
+    shell=True)
+is_macho = b"Mach-O" in file_type
+is_fat = b"universal" in file_type
+targeted_sections = ["__ustring", "__cstring"]
+if unicode_only:
+    targeted_sections = ["__ustring"]
+if ascii_only:
+    targeted_sections = ["__cstring"]
+if not is_macho:
+    quiet or print(f"{file}\tNot a Mach-O")
+    exit()
+if is_fat:
+    subprocess.check_output(
+        [f"cd $(dirname {file}) ; rabin2 -x {file.split('/')[-1]} ; cd -"],
+        shell=True).strip()
+    file = subprocess.check_output(
+        [f"find {file}.fat/*"],
+        shell=True).strip().split(b"\n")[0].decode()
+
+_sections = subprocess.check_output(
+    [f"objdump --section-headers {file}"],
+    shell=True).strip().decode()
+if not any(_ in _sections for _ in targeted_sections):
+    quiet or print(f"{file}\tNo sections found: {', '.join(targeted_sections)}")
+    exit()
+
+print(f"\n{file}\n")
+print("%-28s    %-10s    %s" % ("Address", "Length", "String"))
+with open(file, "rb") as f:
+    bin = f.read()
+for _section in _sections.split("\n")[4:]:
+    [section_id, section_name, _section_length, _section_offset, section_type] =\
+        re.split('\s+', _section.strip(), maxsplit=4)
+    if section_name not in targeted_sections:
+        continue
+
+    section_length = int(_section_length, 16)
+    section_offset = int(_section_offset[len("00000001"):], 16)
+
+    section_data = bin[section_offset:section_offset + section_length]
+    if section_name == "__ustring":
+        nullbyte = b"\x00\x00"
+        encoding = "utf-16"
+    else:
+        nullbyte = b"\x00"
+        encoding = "utf-8"
+
+    string_offset = section_offset
+    for string in section_data.split(nullbyte):
+        if len(string) < 2:
+            continue
+        string_length = len(string + nullbyte) * 8
+        decoded_string = string.decode(encoding, errors='replace').replace("\n", "\\n")
+        print(f"{section_name}:0x{string_offset:016x}    0x{string_length:08x}    {decoded_string}")
+        string_offset += string_length
+
+print("")
+if is_fat:
+    subprocess.check_output(
+        [f"rm -r {_file}.fat"],
+        shell=True)
