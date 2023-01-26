@@ -5,6 +5,10 @@ Best strings command line utility
 Usage: strings macho_file [-u/--unicode-only] [-a/--ascii-only] [-q/--quiet]
 ```
 
+Dependencies
+* radare2
+* binutils
+
 Example output
 
 ```
