@@ -2,14 +2,24 @@
 Best strings command line utility
 
 ```
-Usage: strings macho_file [-u/--unicode-only] [-a/--ascii-only] [-q/--quiet]
+Usage: strings macho_file [-u/--unicode-only] [-a/--ascii-only] [-q/--quiet] [-i/--imhex-output]
 ```
 
-Dependencies
+### Features
+
+- [x] IDA Pro-like output
+- [x] imhex compatible output
+- [x] Mach-O support
+- [] ELF support
+- [] DEX support
+- [] .tar viewer
+- [] .zip/.apk/.ipa viewer
+
+### Dependencies
 * radare2
 * binutils
 
-Example output
+### Example output
 
 ```
 XinaA15_1.1.6.2_patch λ find ./Payload/Xina.app/* | xargs -L 1 ./strings --unicode-only --quiet
