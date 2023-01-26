@@ -5,7 +5,7 @@ Best strings command line utility
 Usage: strings macho_file [-u/--unicode-only] [-a/--ascii-only] [-q/--quiet]
 ```
 
-**Example output**
+Example output
 
 ```
 XinaA15_1.1.6.2_patch λ find ./Payload/Xina.app/* | xargs -L 1 ./strings --unicode-only --quiet
