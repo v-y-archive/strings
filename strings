@@ -14,6 +14,11 @@ import contextlib
 import argparse
 from operator import itemgetter
 
+MIN_STRINGS_FOUND = 3
+MIN_LENGTH = 5
+MAX_LENGTH = 300
+targeted_sections = ["__ustring", "__cstring"]
+
 parser = argparse.ArgumentParser()
 parser.add_argument("file")
 parser.add_argument("-u", "--unicode-only", action="store_true")
@@ -31,7 +36,6 @@ try:
 except SystemExit:
     exit(f"Usage: {sys.argv[0]} macho_file [-u/--unicode-only] [-a/--ascii-only] [-q/--quiet] [-i/--imhex-output]")
 
-targeted_sections = ["__ustring", "__cstring"]
 file_type = subprocess.check_output(
     [f"file {file}"],
     shell=True).decode()
@@ -46,11 +50,10 @@ if is_fat:
     subprocess.check_output(
         [f"cd $(dirname {file}) ; rabin2 -x {file.split('/')[-1]} ; cd -"],
         shell=True)
-    # quiet or print("%-90s\tFat Mach-O binary" % file)
-    print("%-90s\tFat Mach-O binary" % file)
+    quiet or print("%-90s\tFat Mach-O binary" % file)
     _file = file
     file = subprocess.check_output(
-        [f"find {file}.fat/*"],
+        [f"find {file}.fat/* | grep 64"],
         shell=True).strip().split(b"\n")[0].decode()
 
 def _escape(s):
@@ -63,6 +66,7 @@ def _escape(s):
             escaped += c
     return escaped
 
+printbuffer = ""
 try:
     _sections = subprocess.check_output(
         [f"objdump --section-headers {file}"],
@@ -71,9 +75,6 @@ try:
         quiet or print("%-90s\tNo sections found: %s" % (file, ', '.join(targeted_sections)))
         exit()
 
-    print(f"\n{file}\n")
-    if not imhex_output:
-        print("%-26s\t%-8s\t%s" % ("Address", "Length", "String"))
     for _section in _sections.split("\n")[4:]:
         [section_id, section_name, _section_length, _section_offset, section_type] =\
             re.split('\s+', _section.strip(), maxsplit=4)
@@ -81,13 +82,14 @@ try:
             continue
 
         with open(file, "rb") as f:
-
             section_length = int(_section_length, 16)
             if len(_section_offset) > 8:
+                # ARM64
                 section_offset = int(_section_offset, 16) & 0b11111111111111111111111111111111
                 f.seek(section_offset)
                 section_data = f.read(section_length)
             else:
+                # ARM32
                 section_offset = int(_section_offset, 16)
                 f.seek(section_offset)
                 section_data = f.read(section_length)
@@ -100,17 +102,28 @@ try:
         while string_offset < section_length:
             string_length = 0
             try:
-                while (string_offset + string_length) < section_length and \
-                    section_data[string_offset + string_length] != 0:
-                    string_length += 1
-                if (string_offset + string_length + 1) < section_length and \
-                    section_data[string_offset + string_length + 1] == 0:
+                if section_name == "__ustring":
+                    while (string_offset + string_length + 2) < section_length:
+                        if section_data[string_offset + string_length] == 0 and \
+                           section_data[string_offset + string_length + 1] == 0:
+                            break
+                        string_length += 2
                     string_length += 2
                     encoding = "utf-16"
                 else:
-                    string_length += 1
-                    encoding = "utf-8"
-                if string_length < 3:
+                    while (string_offset + string_length) < section_length and \
+                        section_data[string_offset + string_length] != 0:
+                        string_length += 1
+                    if (string_offset + string_length + 1) < section_length and \
+                        section_data[string_offset + string_length + 1] == 0:
+                        string_length += 2
+                        encoding = "utf-16"
+                    else:
+                        string_length += 1
+                        encoding = "utf-8"
+
+                real_length = string_length / 2 if encoding == "utf-16" else string_length
+                if real_length < MIN_LENGTH or real_length > MAX_LENGTH:
                     continue
                 string = section_data[string_offset:string_offset + string_length]
                 decoded_string = string.decode(encoding, errors='ignore')
@@ -122,14 +135,22 @@ try:
 
                 abs_offset = section_offset + string_offset
                 if imhex_output:
-                    print(f"char char_array_{abs_offset:x}[0x{string_length:x}] @ 0x{abs_offset:08x};\t// {_escape(decoded_string)}")
+                    printbuffer += f"char char_array_{abs_offset:08x}[0x{string_length:04x}] @ 0x{abs_offset:08x};\t// {_escape(decoded_string)}\n"
                 else:
-                    print(f"{section_name}:{abs_offset:016x}\t{string_length:08x}\t{_escape(decoded_string)}")
+                    printbuffer += f"{section_name}:{abs_offset:016x}  {string_length:08x}\t{_escape(decoded_string)}\n"
             finally:
                 string_offset += string_length
-    print("")
 finally:
     if is_fat:
         subprocess.check_output(
             [f"rm -r {_file}.fat/"],
             shell=True)
+
+    if printbuffer == "" or len(printbuffer.strip().split("\n")) < MIN_STRINGS_FOUND:
+        if not quiet:
+            print("%-90s\tNo strings found" % file)
+    else:
+        print(f"\n{file}\n")
+        if not imhex_output:
+            print("%-26s  %-8s\t%s" % ("Address", "Length", "String"))
+        print(printbuffer)
